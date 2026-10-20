@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Warehouse Blok O — Interactive Spatial Model</title>
+<meta name="description" content="Offline-first interactive 3D coordination viewer for Warehouse Blok O, GTL Kosambi, Tangerang. REV-00 / 2026.">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%2314171b'/%3E%3Cpath d='M2 13V7l6-4 6 4v6h-4v-4H6v4z' fill='%23e8a33d'/%3E%3C/svg%3E">
+</head>
+<body>
+<div id="app" class="app">
+
+  <!-- ============ HEADER ============ -->
+  <header class="header" role="banner">
+    <div class="header__title">
+      <div class="header__mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="20" height="20"><path d="M3 20v-8l9-6 9 6v8h-5v-6h-8v6z" fill="currentColor"/></svg>
+      </div>
+      <div class="header__text">
+        <h1>Warehouse Blok O</h1>
+        <p class="subtitle">Interactive Spatial Model</p>
+      </div>
+    </div>
+    <div class="header__meta">
+      <span class="chip" title="Site">GTL · Kosambi, Tangerang</span>
+      <span class="chip" title="Document revision">REV-00 / 2026</span>
+      <span class="chip chip--status" id="statusChip" title="Coordination model status"><span class="dot dot--ok"></span>Coordinated · schematic basis</span>
+    </div>
+    <div class="header__actions">
+      <button id="btnShots" class="btn btn--ghost" title="Export all 17 named camera presets as PNG (requires serve.py)">17 shots</button>
+      <button id="btnDebug" class="btn btn--ghost" title="Debug overlay">⚙</button>
+      <button id="btnHelp" class="btn btn--ghost" title="Help and shortcuts">?</button>
+    </div>
+  </header>
+
+  <div class="workbench">
+    <!-- ============ LEFT: LAYERS ============ -->
+    <aside id="panelLeft" class="panel panel--left" aria-label="Installation layers">
+      <div class="panel__head">
+        <h2>Installation systems</h2>
+        <input id="searchBox" type="search" placeholder="Filter systems…" aria-label="Filter systems">
+      </div>
+      <ol id="systemList" class="system-list"></ol>
+
+      <div class="panel__head"><h2>Model layers</h2></div>
+      <ul id="layerList" class="layer-list"></ul>
+      <div class="layer-actions">
+        <button id="btnShowAll" class="btn btn--mini">Show all</button>
+        <button id="btnHideNoness" class="btn btn--mini">Hide nonessential</button>
+        <button id="btnIsolate" class="btn btn--mini" disabled>Isolate selected</button>
+        <button id="btnResetLayers" class="btn btn--mini">Reset</button>
+      </div>
+    </aside>
+
+    <!-- ============ CENTER: VIEWPORT ============ -->
+    <main id="viewport" class="viewport" aria-label="3D model viewport">
+      <canvas id="gl" tabindex="0" aria-label="Interactive 3D warehouse model. Drag to orbit, scroll to zoom."></canvas>
+
+      <!-- overlay anchors -->
+      <div id="labelLayer" class="label-layer" aria-hidden="true"></div>
+      <div id="markerLayer" class="marker-layer"></div>
+
+      <!-- compass -->
+      <div id="compass" class="compass" title="Camera heading">
+        <svg viewBox="0 0 64 64" width="58" height="58">
+          <circle cx="32" cy="32" r="29" class="cmp-ring"/>
+          <g id="compassDial">
+            <path d="M32 8 L36 30 L32 27 L28 30 Z" class="cmp-n"/>
+            <text x="32" y="20" class="cmp-t">N</text>
+            <text x="52" y="36" class="cmp-t">E</text>
+            <text x="32" y="56" class="cmp-t">S</text>
+            <text x="12" y="36" class="cmp-t">W</text>
+          </g>
+          <line x1="32" y1="32" x2="32" y2="16" class="cmp-needle"/>
+          <circle cx="32" cy="32" r="2.4" class="cmp-hub"/>
+        </svg>
+      </div>
+
+      <!-- scale bar (plan mode) -->
+      <div id="scaleBar" class="scale-bar" hidden>
+        <div class="scale-bar__rule" id="scaleRule"></div>
+        <span id="scaleText">10 m</span>
+      </div>
+
+      <!-- hover tooltip -->
+      <div id="tooltip" class="tooltip" hidden></div>
+
+      <!-- POV controls -->
+      <div id="povHud" class="pov-hud" hidden>
+        <span class="pov-hud__title">POV walkthrough</span>
+        <span class="pov-hud__keys">W A S D / arrows · Shift run</span>
+        <button id="btnExitPov" class="btn btn--amber">Exit POV</button>
+      </div>
+
+      <!-- presentation overlay -->
+      <div id="presentHud" class="present-hud" hidden>
+        <div class="present-card" id="presentCard">
+          <div class="present-card__step" id="presentStep">1 / 5</div>
+          <h3 id="presentTitle"></h3>
+          <p id="presentText"></p>
+          <div class="present-card__nav">
+            <button id="btnPrevStop" class="btn btn--mini">← Prev</button>
+            <button id="btnNextStop" class="btn btn--mini">Next →</button>
+            <button id="btnExitPresent" class="btn btn--amber">Exit presentation</button>
+          </div>
+        </div>
+        <div class="present-chapters" id="presentChapters"></div>
+      </div>
+
+      <!-- debug strip -->
+      <div id="debugStrip" class="debug-strip" hidden></div>
+
+      <!-- loading -->
+      <div id="loading" class="loading">
+        <div class="loading__box">
+          <div class="loading__logo">W·O</div>
+          <h2>Warehouse Blok O</h2>
+          <p>Building spatial model…</p>
+          <div class="loading__bar"><div id="loadingFill" class="loading__fill"></div></div>
+          <p class="loading__phase" id="loadingPhase">Procedural geometry</p>
+        </div>
+      </div>
+    </main>
+
+    <!-- ============ RIGHT: EXPLANATION ============ -->
+    <aside id="panelRight" class="panel panel--right" aria-label="System explanation">
+      <div class="panel__head"><h2 id="rightTitle">Project overview</h2>
+        <button id="btnCollapseRight" class="btn btn--mini" title="Collapse panel">⟨</button>
+      </div>
+      <div id="rightBody" class="panel__body"></div>
+    </aside>
+  </div>
+
+  <!-- ============ BOTTOM TOOLBAR ============ -->
+  <footer class="toolbar" role="toolbar" aria-label="Viewport tools">
+    <div class="toolbar__group" role="group" aria-label="Camera modes">
+      <button class="tool" id="toolOrbit" data-mode="orbit" title="Orbit — drag to rotate 360°">Orbit</button>
+      <button class="tool" id="toolPlan" data-mode="plan" title="Plan — north-up orthographic view">Plan</button>
+      <button class="tool" id="toolPov" data-mode="pov" title="POV — first-person walk (WASD)">POV</button>
+    </div>
+    <div class="toolbar__group" role="group" aria-label="Camera presets">
+      <button class="tool" id="toolInterior" title="Interior operational view">Interior</button>
+      <button class="tool" id="toolExterior" title="Exterior site view">Exterior</button>
+    </div>
+    <div class="toolbar__group" role="group" aria-label="View options">
+      <button class="tool tool--toggle" id="toolRoof" aria-pressed="true" title="Show / hide roof layer">Roof</button>
+      <button class="tool tool--toggle" id="toolMeasure" aria-pressed="false" title="Measure ground distance — click two points">Measure</button>
+      <button class="tool" id="toolShot" title="Save current viewport as PNG">Capture</button>
+      <button class="tool" id="toolPresent" title="Five-stop client presentation walkthrough">Present</button>
+      <button class="tool" id="toolReset" title="Reset camera and layers">Reset</button>
+    </div>
+    <div class="toolbar__group toolbar__group--lights" role="group" aria-label="Lighting">
+      <button class="tool tool--light is-on" data-light="day" title="Day exterior lighting">Day ext</button>
+      <button class="tool tool--light" data-light="interior" title="Day interior lighting">Day int</button>
+      <button class="tool tool--light" data-light="night" title="Night operations lighting">Night</button>
+    </div>
+  </footer>
+
+  <!-- persistent disclaimer -->
+  <div class="disclaimer" role="note">
+    <strong>Disclaimer</strong> — This interactive model is a coordinated visualization derived from schematic source drawings. It is not a fabrication, structural-certification, or as-built model. Verify dimensions, equipment specifications, clearances, and tentative locations through field survey and discipline-engineer approval before construction.
+    <span class="disclaimer__legend">
+      <span class="lg lg--ok">● verified / active</span>
+      <span class="lg lg--warn">● tentative — verify on site</span>
+      <span class="lg lg--tbc">● TBC</span>
+    </span>
+  </div>
+
+  <!-- panel toggles (tablet / mobile) -->
+  <button id="btnLeftToggle" class="panel-toggle panel-toggle--left" aria-label="Toggle layer panel">☰ Layers</button>
+  <button id="btnRightToggle" class="panel-toggle panel-toggle--right" aria-label="Toggle information panel">ℹ Info</button>
+
+  <!-- help dialog -->
+  <dialog id="helpDialog" class="dialog">
+    <article>
+      <h2>Controls</h2>
+      <dl class="help-grid">
+        <dt>Orbit</dt><dd>Drag to rotate 360° · wheel to zoom · Shift-drag or middle-drag to pan</dd>
+        <dt>Plan</dt><dd>North-up orthographic top view with footprint dimensions</dd>
+        <dt>POV</dt><dd>Click the model to capture the pointer, then WASD / arrows to walk, Shift to run, Esc to exit</dd>
+        <dt>Select</dt><dd>Click a numbered marker or any highlighted system geometry</dd>
+        <dt>Measure</dt><dd>Click two ground points to read the distance in metres</dd>
+        <dt>Keys</dt><dd>1–8 select systems · Esc deselect / exit mode · ← → navigate presentation</dd>
+      </dl>
+      <form method="dialog"><button class="btn btn--amber">Close</button></form>
+    </article>
+  </dialog>
+
+  <!-- keyboard-shortcut dialog is the same help dialog; keep DOM tidy -->
+</div>
+
+<script src="systems.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
